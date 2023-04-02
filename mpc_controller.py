@@ -21,8 +21,8 @@ class mpc_controller:
         for i in range(N):
             opti.subject_to(target_vel[i+1] == ca.if_else(
                 (v_lead+(k_p*(X[i, 0]-target_dist))) > v_max, v_max, v_lead+(k_p*(X[i, 0]-target_dist))))
-            opti.subject_to(U[i] >= -3)
-            opti.subject_to(U[i] <= 3)
+            opti.subject_to(U[i] >= -5)
+            opti.subject_to(U[i] <= 5)
             opti.subject_to(X[i+1, 1] >= 0)
             opti.subject_to(X[i+1, :] == X[i, :] +
                             mpc_controller.f(X[i, 1], U[i], v_lead)*dt)
@@ -37,11 +37,13 @@ class mpc_controller:
         return X, U, J, target_vel
 
     def mpc(self, rel_dist, v0, a0, v_lead, v_max, safe_stop_dist, dt, N):
-
+        ACC_RANGE = 100
         if v_lead > v_max:
             rel_dist = safe_stop_dist
             v_lead = v_max
-            print("DID CHANGE")
+        if rel_dist > ACC_RANGE:
+            rel_dist = safe_stop_dist
+            v_lead = v_max
         # Set up optimization problem
         opti = ca.Opti()
 
@@ -53,11 +55,11 @@ class mpc_controller:
         X, U, J, target_vel = mpc_controller.predict_trajectory(
             rel_dist, v0, a0, v_lead, safe_stop_dist, v_max, dt, N, opti)
 
-        w1 = 40.0
+        w1 = 300.0
         w2 = 40.0
         w3 = 20.0
         w4 = 20000.0
-        w5 = 1000.0
+        w5 = 500.0
         opti.minimize(w1*ca.sumsqr(ca.fabs(U)) + w2*ca.sumsqr(ca.fabs(J)) +
                       w3*ca.sumsqr(ca.fabs(X[:, 0] - safe_stop_dist)) + w4*ca.sumsqr(ca.if_else(X[:, 1] > v_max, ca.fabs(v_max-X[:, 1]), 0)) + w5*ca.sumsqr(ca.if_else(X[:, 0] < safe_stop_dist, safe_stop_dist-X[:, 0], 0)))
 
@@ -66,9 +68,12 @@ class mpc_controller:
 
         # Set up initial conditions and solve the problem
         # opti.set_initial(T, 1.0)
-        opti.solver('ipopt')
-        sol = opti.solve()
-        return sol.value(U)[0], sol.value(J)[0], sol.value(target_vel)[0]
+        try:
+            opti.solver('ipopt')
+            sol = opti.solve()
+            return sol.value(U)[0], sol.value(J)[0]
+        except:
+            return 0, (0-a0)/dt
         # Plot results
         # tgrid = np.linspace(0, (N+1)*dt, N+1)
         # plt.figure()
