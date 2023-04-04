@@ -21,6 +21,7 @@ def lead_car_speeds():
     safe_stop_dist = 15.0
     dt = 0.5
     N = 100
+    soc = 1
 
     current = time.time()
     t = [time.time() - current]
@@ -39,7 +40,7 @@ def lead_car_speeds():
         print(f"EGO_VEHCILE V {v0}")
         print(f"REL_DISTANCE {rel_dist}")
         U, J = mpcControl.mpc(
-            rel_dist, v0, a0, v_lead, v_max, safe_stop_dist, dt_sim, N)
+            rel_dist, v0, a0, v_lead,a_lead, v_max, soc, safe_stop_dist, dt_sim, N)
         # The lead vehicle changes its speed based on a simple equations
 
         updatParams = sample_model(v0, U, dt_sim)
@@ -96,6 +97,7 @@ def lead_car_stops():
     safe_stop_dist = 15.0
     dt = 0.5
     N = 100
+    soc = 1
 
     current = time.time()
     t = [time.time() - current]
@@ -114,7 +116,7 @@ def lead_car_stops():
         print(f"EGO_VEHCILE V {v0}")
         print(f"REL_DISTANCE {rel_dist}")
         U, J = mpcControl.mpc(
-            rel_dist, v0, a0, v_lead, v_max, safe_stop_dist, dt_sim, N)
+            rel_dist, v0, a0, v_lead,a_lead, v_max,soc, safe_stop_dist, dt_sim, N)
         # The lead vehicle changes its speed based on a simple equations
 
         updatParams = sample_model(v0, U, dt_sim)
@@ -173,6 +175,7 @@ def approach_stopped_car():
     safe_stop_dist = 15.0
     dt = 0.5
     N = 100
+    soc = 1
 
     current = time.time()
     t = [time.time() - current]
@@ -191,7 +194,7 @@ def approach_stopped_car():
         print(f"EGO_VEHCILE V {v0}")
         print(f"REL_DISTANCE {rel_dist}")
         U, J = mpcControl.mpc(
-            rel_dist, v0, a0, v_lead, v_max, safe_stop_dist, dt_sim, N)
+            rel_dist, v0, a0, v_lead,a_lead, v_max,soc, safe_stop_dist, dt_sim, N)
         # The lead vehicle changes its speed based on a simple equations
 
         updatParams = sample_model(v0, U, dt_sim)
@@ -248,6 +251,7 @@ def cut_in():
     safe_stop_dist = 15.0
     dt = 0.5
     N = 100
+    soc = 1
 
     current = time.time()
     t = [time.time() - current]
@@ -267,7 +271,7 @@ def cut_in():
         print(f"EGO_VEHCILE V {v0}")
         print(f"REL_DISTANCE {rel_dist}")
         U, J = mpcControl.mpc(
-            rel_dist, v0, a0, v_lead, v_max, safe_stop_dist, dt_sim, N)
+            rel_dist, v0, a0, v_lead, a_lead, v_max, soc, safe_stop_dist, dt_sim, N)
         # The lead vehicle changes its speed based on a simple equations
 
         updatParams = sample_model(v0, U, dt_sim)

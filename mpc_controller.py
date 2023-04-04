@@ -4,29 +4,64 @@ import matplotlib.pyplot as plt
 
 
 class mpc_controller:
+    def vehicle_model(x, u, v_lead, a_lead, soc, dt):
+        SOC_curve = np.loadtxt('SOC_curve.csv', delimiter=',')
+        OCV_curve = np.loadtxt('OCV_curve.csv', delimiter=',')
+        voltage = np.interp(soc,SOC_curve, OCV_curve)
+        DIFF = 0
+        MASS = 2600
+        AREA = 1.1
+        CD = 0.38
+        RHO = 1.225
+        R = 0.733/2
+        NUM_PARALLEL = 24
+
+        fx  = MASS*u
+        fdrag = (1/2)*CD*RHO*(x[1]**2)*AREA
+        wheel_force = (fx + fdrag)/(2+(2*DIFF))
+        front_torque = 2*(wheel_force)*R
+        rear_torque = 2*(DIFF*wheel_force)*R
+        wheel_speed = x[1]/R
+        front_motor_power = front_torque*wheel_speed
+        rear_motor_power = rear_torque*wheel_speed
+        total_power = (front_motor_power+rear_motor_power)/NUM_PARALLEL
+
+        i = ca.if_else(total_power>0,total_power/voltage,0)
+
+        rel_dist_change = x[0]+((v_lead*dt) + ((1/2)*a_lead*dt**2) - (x[1]*dt) + ((1/2)*u*dt**2))
+        v_change = x[1] + u*dt
+        v_lead_change = v_lead + (a_lead*dt)
+
+        return ca.horzcat(rel_dist_change,v_change), v_lead_change, i
+
+
+
     def f(x, u, v_lead):
         return ca.horzcat((v_lead - x), u)
 
-    def predict_trajectory(rel_dist, v0, a0, v_lead, target_dist, v_max, dt, N, opti):
-        X = opti.variable(N+1, 2)
+    def predict_trajectory(rel_dist, v0, a0, v_lead, a_lead, target_dist, v_max, soc, dt, N, opti):
+        X = opti.variable(N+1,2)
+        LEAD = opti.variable(N+1,1)
         U = opti.variable(N, 1)
         J = opti.variable(N-1, 1)
-        cost = 0
-        target_vel = opti.variable(N+1, 1)
+        BATT_POWER_USED = opti.variable(N, 1)
+
         opti.subject_to(X[0, 0] == rel_dist)
         opti.subject_to(X[0, 1] == v0)
-        opti.subject_to(target_vel[0] == v0)
+        opti.subject_to(LEAD[0, 0] == v_lead)
 
         k_p = 1.0
         for i in range(N):
-            opti.subject_to(target_vel[i+1] == ca.if_else(
-                (v_lead+(k_p*(X[i, 0]-target_dist))) > v_max, v_max, v_lead+(k_p*(X[i, 0]-target_dist))))
             opti.subject_to(U[i] >= -5)
             opti.subject_to(U[i] <= 5)
             opti.subject_to(X[i+1, 1] >= 0)
+            # next_state, LEAD_change, power_draw = mpc_controller.vehicle_model(X[i,:],U[i],LEAD[i], a_lead,soc,dt)
+            # opti.subject_to(X[i+1,:] == next_state)
+            # opti.subject_to(LEAD[i+1] == LEAD_change)
+            # opti.subject_to(BATT_POWER_USED[i] == power_draw)
             opti.subject_to(X[i+1, :] == X[i, :] +
                             mpc_controller.f(X[i, 1], U[i], v_lead)*dt)
-
+            
             if i < N-1:
                 opti.subject_to(J[i] <= 4)
                 opti.subject_to(J[i] >= -4)
@@ -34,9 +69,9 @@ class mpc_controller:
                     opti.subject_to(J[i] == (U[i] - a0)/dt)
                 else:
                     opti.subject_to(J[i] == (U[i] - U[i-1])/dt)
-        return X, U, J, target_vel
+        return X, U, J, BATT_POWER_USED
 
-    def mpc(self, rel_dist, v0, a0, v_lead, v_max, safe_stop_dist, dt, N):
+    def mpc(self, rel_dist, v0, a0, v_lead, a_lead, v_max, soc, safe_stop_dist, dt, N):
         ACC_RANGE = 100
         if v_lead > v_max:
             rel_dist = safe_stop_dist
@@ -52,28 +87,35 @@ class mpc_controller:
         # opti.subject_to(T >= 0.1)
         # opti.subject_to(T <= 10.0)
         # Set up decision variables and constraints
-        X, U, J, target_vel = mpc_controller.predict_trajectory(
-            rel_dist, v0, a0, v_lead, safe_stop_dist, v_max, dt, N, opti)
+        X, U, J, discharge = mpc_controller.predict_trajectory(
+            rel_dist, v0, a0, v_lead, a_lead, safe_stop_dist, v_max, soc, dt, N, opti)
 
         w1 = 300.0
         w2 = 40.0
         w3 = 20.0
-        w4 = 20000.0
+        w4 = 1000.0
         w5 = 500.0
+        w6 = 500.0
+    
         opti.minimize(w1*ca.sumsqr(ca.fabs(U)) + w2*ca.sumsqr(ca.fabs(J)) +
-                      w3*ca.sumsqr(ca.fabs(X[:, 0] - safe_stop_dist)) + w4*ca.sumsqr(ca.if_else(X[:, 1] > v_max, ca.fabs(v_max-X[:, 1]), 0)) + w5*ca.sumsqr(ca.if_else(X[:, 0] < safe_stop_dist, safe_stop_dist-X[:, 0], 0)))
+                      w3*ca.sumsqr(ca.fabs(X[:, 0] - safe_stop_dist)) + w4*ca.sumsqr(ca.if_else(X[:, 1] > v_max, ca.fabs(v_max-X[:, 1]), 0)) + w5*ca.sumsqr(ca.if_else(X[:, 0] < safe_stop_dist, safe_stop_dist-X[:, 0], 0))) 
+        # + w6*ca.sumsqr(discharge)
 
         # opti.subject_to(X[:, 1] <= v_max)
         # opti.subject_to(X[:, 1] >= 0)
 
         # Set up initial conditions and solve the problem
         # opti.set_initial(T, 1.0)
-        try:
-            opti.solver('ipopt')
-            sol = opti.solve()
-            return sol.value(U)[0], sol.value(J)[0]
-        except:
-            return 0, (0-a0)/dt
+        opti.solver('ipopt')
+        sol = opti.solve()
+        return sol.value(U)[0], sol.value(J)[0]
+        
+        # try:
+        #     opti.solver('ipopt')
+        #     sol = opti.solve()
+        #     return sol.value(U)[0], sol.value(J)[0]
+        # except:
+        #     return 0, (0-a0)/dt
         # Plot results
         # tgrid = np.linspace(0, (N+1)*dt, N+1)
         # plt.figure()
