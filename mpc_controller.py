@@ -54,7 +54,7 @@ class mpc_controller:
     def predict_trajectory(rel_dist, v0, a0, v_lead, a_lead, soc, dt, N, opti):
 #define casadi opti varibales for problem
         X = opti.variable(N+1, 2)#state vectors X[0,:] - Position, X[1,:] - velocity
-        LEAD = opti.variable(N+1, 1) - #Lead velocity
+        LEAD = opti.variable(N+1, 1)  #Lead velocity
         U = opti.variable(N, 1)#Accleration control variable
         THROTTLE = opti.variable(N, 1)
         J = opti.variable(N-1, 1)#jerk
