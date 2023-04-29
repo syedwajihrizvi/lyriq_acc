@@ -8,14 +8,14 @@ acc_range = 100
 
 
 def sample_model(v, u, dt):
-    u = u - 0.1
+    u = u - 0.5
     return [v*dt + (u*(dt**2)/2), v + (u*dt)]
 
 
 def lead_car_speeds():
     mpcControl = mpc_controller()
     rel_dist = 50
-    v0 = 20.0
+    v0 = 10.0
     a0 = 2.0
     v_lead = 25.0
     v_max = 30.0
@@ -41,8 +41,11 @@ def lead_car_speeds():
         print(f"EGO_VEHCILE V {v0}")
         print(f"REL_DISTANCE {rel_dist}")
         al = 0
+        if dt_sim == 0:
+            dt_sim = 0.1
+        
         U, J = mpcControl.mpc(
-            rel_dist, v0, a0, v_lead, al, v_max, soc, safe_stop_dist, dt_sim, N)
+            rel_dist, v0, a0, v_lead, al, v_max, soc, dt_sim, N)
         # The lead vehicle changes its speed based on a simple equations
 
         updatParams = sample_model(v0, U, dt_sim)
@@ -118,8 +121,10 @@ def lead_car_stops():
         print(f"EGO_VEHCILE V {v0}")
         print(f"REL_DISTANCE {rel_dist}")
         al = 0
+        if dt_sim == 0:
+            dt_sim = 0.1        
         U, J = mpcControl.mpc(
-            rel_dist, v0, a0, v_lead, al, v_max, soc, safe_stop_dist, dt_sim, N)
+            rel_dist, v0, a0, v_lead, al, v_max, soc, dt_sim, N)
         # The lead vehicle changes its speed based on a simple equations
 
         updatParams = sample_model(v0, U, dt_sim)
@@ -197,8 +202,10 @@ def approach_stopped_car():
         print(f"EGO_VEHCILE V {v0}")
         print(f"REL_DISTANCE {rel_dist}")
         al = 0
+        if dt_sim == 0:
+            dt_sim = 0.1
         U, J = mpcControl.mpc(
-            rel_dist, v0, a0, v_lead, al, v_max, soc, safe_stop_dist, dt_sim, N)
+            rel_dist, v0, a0, v_lead, al, v_max, soc, dt_sim, N)
         # The lead vehicle changes its speed based on a simple equations
 
         updatParams = sample_model(v0, U, dt_sim)
@@ -247,7 +254,7 @@ def approach_stopped_car():
 
 def cut_in():
     mpcControl = mpc_controller()
-    rel_dist = 50
+    rel_dist = 70
     v0 = 30.0
     a0 = 2.0
     v_lead = 25
@@ -275,8 +282,10 @@ def cut_in():
         print(f"EGO_VEHCILE V {v0}")
         print(f"REL_DISTANCE {rel_dist}")
         al = 0
+        if dt_sim == 0:
+            dt_sim = 0.1
         U, J = mpcControl.mpc(
-            rel_dist, v0, a0, v_lead, al, v_max, soc, safe_stop_dist, dt_sim, N)
+            rel_dist, v0, a0, v_lead, al, v_max, soc, dt_sim, N)
         # The lead vehicle changes its speed based on a simple equations
 
         updatParams = sample_model(v0, U, dt_sim)
@@ -291,7 +300,7 @@ def cut_in():
         rel_dist = dl - d0
 
         if ((time.time()-current) > 20) and not(cutin):
-            rel_dist = 300
+            rel_dist = 35
             v_lead = 25
             cutin = True
 
@@ -327,7 +336,86 @@ def cut_in():
     plt.title('Velocity vs time')
     plt.show()
 
+def PID_TEST():
+    mpcControl = mpc_controller()
+    rel_dist = 100
+    v0 = 30.0
+    a0 = 2.0
+    v_lead = 25.0
+    v_max = 30.0
+    safe_stop_dist = 15.0
+    dt = 0.5
+    N = 100
+    soc = .5
 
+    current = time.time()
+    t = [time.time() - current]
+    r = [rel_dist]
+    u = [a0]
+    v = [v0]
+    vl = [v_lead]
+    outOfRange = False
+    i = 0
+    # Run MPC for 1 Minute
+    while time.time()-current < 30:
+        time.sleep(0.1)
+        i = i + 1
+        t.append(time.time() - current)
+        dt_sim = t[i] - t[i-1]
+        print(f"V_LEAD: {v_lead}")
+        print(f"EGO_VEHCILE V {v0}")
+        print(f"REL_DISTANCE {rel_dist}")
+        al = 0
+        if dt_sim == 0:
+            dt_sim = 0.1        
+        U, J = mpcControl.mpc(
+            rel_dist, v0, a0, v_lead, al, v_max, soc, dt_sim, N)
+        # The lead vehicle changes its speed based on a simple equations
+
+        updatParams = sample_model(v0, U, dt_sim)
+        v_lead = v_lead - (a_lead*dt_sim)
+        if v_lead <= 0:
+            v_lead = 0
+
+        # rel_dist = (rel_dist - updatParams[0]) + \
+        #     (v_lead*0.5 + (a_lead*(0.5 ** 2)/2))
+        a0 = U
+        v0 = updatParams[1]
+        dl = (v_lead*dt_sim) + (0.5*a_lead*dt_sim*dt_sim) + rel_dist
+        d0 = (v0*dt_sim) + (0.5*a0*dt_sim*dt_sim)
+        rel_dist = dl - d0
+
+        r.append(rel_dist)
+        u.append(U)
+        v.append(v0)
+        vl.append(v_lead)
+        print(f"ACCELERATION: {a0}")
+        print("DONE")
+
+    plt.figure(1)
+    plt.plot(t, r)
+    plt.xlabel('Time [s]')
+    plt.ylabel('Relative Distance [m]')
+    plt.title('Relative Distance between Ego and Lead Vehicle')
+
+    plt.figure(2)
+    plt.plot(t, u)
+    plt.xlabel('Time [s]')
+    plt.ylabel('Control Signal U')
+    plt.title('Control Signal U vs time')
+
+    plt.figure(3)
+    plt.plot(t, v)
+    plt.xlabel('Time [s]')
+    plt.ylabel('Ego Velocity')
+    plt.title('Velocity vs time')
+
+    plt.figure(4)
+    plt.plot(t, vl)
+    plt.xlabel('Time [s]')
+    plt.ylabel('Lead Velocity')
+    plt.title('Lead Velocity vs time')
+    plt.show()
 def one_iteration():
     mpcControl = mpc_controller()
     rel_dist = 75
@@ -341,11 +429,12 @@ def one_iteration():
     soc = 1
     al = 0
     U, J = mpcControl.mpc(
-        rel_dist, v0, a0, v_lead, al, v_max, soc, safe_stop_dist, dt, N)
+        rel_dist, v0, a0, v_lead, al, v_max, soc, dt, N)
 
 
-lead_car_speeds()
-# lead_car_stops()
+# lead_car_speeds()
+#lead_car_stops()
 # approach_stopped_car()
-# cut_in()
+cut_in()
 # one_iteration()
+# PID_TEST()
